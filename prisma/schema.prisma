@@ -1,0 +1,204 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  ADMIN
+  FARMER
+  CONSUMER
+  INSTITUTIONAL_CONSUMER
+}
+
+enum OrderStatus {
+  PLACED
+  ACCEPTED
+  PROCESSING
+  READY_FOR_DISPATCH
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  REJECTED
+  REFUND_REQUESTED
+  REFUNDED
+  FAILED
+}
+
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  OUT_OF_STOCK
+  ARCHIVED
+}
+
+model User {
+  id            String    @id @default(uuid())
+  role          Role      @default(CONSUMER)
+  name          String?
+  phone         String?   @unique
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  language      String    @default("en")
+  status        String    @default("ACTIVE")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  farmerProfile       FarmerProfile?
+  organizationProfile OrganizationProfile?
+  orders              Order[]              @relation("CustomerOrders")
+  sellerOrders        SellerOrder[]        @relation("FarmerOrders")
+}
+
+model FarmerProfile {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  farmName           String
+  description        String?
+  verificationStatus String   @default("PENDING")
+  location           String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  farms    Farm[]
+  products Product[]
+}
+
+model OrganizationProfile {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationName   String
+  type               String
+  peopleServed       Int?
+  verificationStatus String   @default("PENDING")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Farm {
+  id                     String        @id @default(uuid())
+  farmerId               String
+  farmer                 FarmerProfile @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  location               String
+  farmSize               String?
+  cultivationInformation String?
+  createdAt              DateTime      @default(now())
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products     Product[]
+  translations CategoryTranslation[]
+}
+
+model CategoryTranslation {
+  id         String   @id @default(uuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  language   String
+  name       String
+
+  @@unique([categoryId, language])
+}
+
+model Product {
+  id         String        @id @default(uuid())
+  farmerId   String
+  farmer     FarmerProfile @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category      @relation(fields: [categoryId], references: [id])
+  status     ProductStatus @default(DRAFT)
+  imageUrl   String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  translations ProductTranslation[]
+  variants     ProductVariant[]
+}
+
+model ProductTranslation {
+  id          String  @id @default(uuid())
+  productId   String
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  language    String
+  name        String
+  description String?
+
+  @@unique([productId, language])
+}
+
+model ProductVariant {
+  id                String   @id @default(uuid())
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  unit              String // e.g., "kg", "g", "piece"
+  price             Float
+  minQuantity       Float    @default(1)
+  availableQuantity Float    @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  orderItems OrderItem[]
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  userId      String
+  user        User        @relation("CustomerOrders", fields: [userId], references: [id])
+  totalAmount Float
+  status      OrderStatus @default(PLACED)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  sellerOrders SellerOrder[]
+  payments     Payment[]
+}
+
+model SellerOrder {
+  id        String      @id @default(uuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  farmerId  String
+  farmer    User        @relation("FarmerOrders", fields: [farmerId], references: [id]) // Assuming farmer is a User with FARMER role
+  status    OrderStatus @default(PLACED)
+  amount    Float
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  items OrderItem[]
+}
+
+model OrderItem {
+  id               String         @id @default(uuid())
+  sellerOrderId    String
+  sellerOrder      SellerOrder    @relation(fields: [sellerOrderId], references: [id], onDelete: Cascade)
+  productVariantId String
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id])
+  quantity         Float
+  price            Float // price at the time of order
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method    String
+  status    String   @default("PENDING")
+  amount    Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
